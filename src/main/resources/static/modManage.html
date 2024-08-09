@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Admin Mod Management</title>
+    <style>
+        body { font-family: Arial, sans-serif; }
+        .error { color: red; }
+        .success { color: green; }
+    </style>
+</head>
+<body>
+<h1>Mod Management</h1>
+
+<!-- CRUD 表单 -->
+<div id="crud-form">
+    <h2>Create Mod</h2>
+    <form id="create-mod" onsubmit="handleCreateMod(event)">
+        <label for="mod-id">modId:</label>
+        <input type="text" id="mod-id" name="mod-id" required>
+        <br>
+        <label for="mod-version">modVersion:</label>
+        <input type="number" step="0.01" min="0.00" max="999.99" id="mod-version" name="mod-version" required>
+        <br>
+        <label for="mod-available">modAvailable:</label>
+        <select id="mod-available" name="mod-available" required>
+            <option value="true">Yes</option>
+            <option value="false">No</option>
+        </select>
+        <br>
+        <label for="mod-info">modInfo:</label>
+        <input type="text" id="mod-info" name="mod-info" maxlength="50">
+        <br>
+        <button type="submit">Create</button>
+        <p id="create-success" class="success"></p>
+        <p id="create-error" class="error"></p>
+    </form>
+
+
+    <h2>Delete Mod</h2>
+    <form id="delete-mod" onsubmit="handleDeleteMod(event)">
+        <label for="mod-id-delete">modId:</label>
+        <input type="text" id="mod-id-delete" name="mod-id-delete" required>
+        <br>
+        <button type="submit" class="delete-button">Delete</button>
+        <button type="button" class="completely-delete-button">Completely Delete</button>
+    </form>
+    <p id="delete-success" class="success"></p>
+    <p id="delete-error" class="error"></p>
+
+    <h2>Update Mod</h2>
+    <form id="update-mod" onsubmit="handleUpdateMod(event)">
+        <label for="mod-id-update">Mod ID:</label>
+        <input type="text" id="mod-id-update" name="mod-id-update" required>
+        <br>
+        <label for="mod-version-update">Mod Version:</label>
+        <input type="number" step="0.01" min="0.00" max="999.99" id="mod-version-update" name="mod-version-update">
+        <br>
+        <label for="mod-available-update">Mod Available:</label>
+        <select id="mod-available-update" name="mod-available-update">
+            <option value="true">Yes</option>
+            <option value="false">No</option>
+        </select>
+        <br>
+        <label for="mod-info-update">Mod Info:</label>
+        <input type="text" id="mod-info-update" name="mod-info-update" maxlength="50">
+        <br>
+        <button type="submit">Update</button>
+    </form>
+    <p id="update-success" class="success"></p>
+    <p id="update-error" class="error"></p>
+
+    <h2>Query Mod</h2>
+    <form id="query-mod" onsubmit="handleQueryMod(event)">
+        <label for="mod-id-query">Mod ID:</label>
+        <input type="text" id="mod-id-query" name="mod-id-query" required>
+        <br>
+        <button type="submit">Query</button>
+    </form>
+    <p id="query-success" class="success"></p>
+    <p id="query-error" class="error"></p>
+
+    <h1>Mod List</h1>
+    <form id="-pageQuery-mod" onsubmit="handlePageQueryMod(event)">
+        <button type="submit">Query</button>
+    </form>
+    <p id="pageQuery-success" class="success"></p>
+    <p id="pageQuery-error" class="error"></p>
+
+    <table id="mod-table">
+        <thead>
+        <tr>
+            <th>modId</th>
+            <th>modVersion</th>
+            <th>modAvailable</th>
+            <th>modInfo</th>
+        </tr>
+        </thead>
+        <tbody>
+        </tbody>
+    </table>
+    <div id="pagination">
+        <button id="prev-page">Prev</button>
+        <span id="current-page">1</span>
+        <button id="next-page">Next</button>
+    </div>
+</div>
+
+<script>
+    // 获取存储在localStorage中的token
+    let token = localStorage.getItem('Authorization');
+    let currentPage = 1;
+    let totalPages = 1;
+    const pageSize = 5;
+    // 检查是否有token
+    if (!token) {
+        alert('Please login first.');
+        window.location.href = '/index.html'; // 重定向到登录页面
+    }
+    
+    function fetchMods(page, size) {
+        fetch(`/admin/mods/page/${page}`, {
+            method: 'GET',
+            headers: {
+                'Authorization': `${token}`,
+                'Content-Type': 'application/json'
+            }
+        })
+            .then(response => {
+                // 获取响应头中的JWT令牌
+                let newToken = response.headers.get('Authorization');
+
+                // 如果有新的JWT令牌，存储到localStorage中
+                if (newToken) {
+                    localStorage.setItem('Authorization', newToken);
+                    token = newToken;
+                    console.log('New token received:', newToken);
+                }
+                if (!response.ok) {
+                    if (response.status === 401) {
+                        // Token is expired or invalid
+                        alert('Your session has expired. Please login again.');
+                        localStorage.removeItem('Authorization'); // Remove the token from storage
+                        window.location.href = '/index.html'; // Redirect to login page
+                    } else if (response.status === 403){
+                        alert('Forbidden: ADMIN role required.');
+                        localStorage.removeItem('Authorization'); // Remove the token from storage
+                        window.location.href = '/index.html'; // Redirect to login page
+                    } else {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.code === 200 ) {
+                    const modPage = data.data; // 获取 Page<Mod> 对象
+                    totalPages = Math.ceil(modPage.totalElements / size);
+                    displayMods(modPage);
+                    updatePagination(modPage.currentPage, totalPages);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                document.getElementById('pageQuery-error').textContent = data.message || 'An unexpected error occurred.';
+            });
+    }
+
+    function displayMods(mods) {
+        const tbody = document.getElementById('mod-table').getElementsByTagName('tbody')[0];
+        tbody.innerHTML = '';
+
+        mods.content.forEach(mod => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                    <td>${mod.modId}</td>
+                    <td>${mod.modVersion}</td>
+                    <td>${mod.modAvailable}</td>
+                    <td>${mod.modInfo}</td>
+                `;
+            tbody.appendChild(row);
+        });
+    }
+
+    function updatePagination(currentPage, totalPages) {
+        console.log('Current Page:', currentPage);
+        console.log('Total Pages:', totalPages);
+        document.getElementById('current-page').textContent = currentPage;
+        document.getElementById('prev-page').disabled = currentPage === 1;
+        document.getElementById('next-page').disabled = currentPage === totalPages;
+    }
+
+    document.getElementById('prev-page').addEventListener('click', function() {
+        console.log('Previous page clicked');
+        if (currentPage > 1) {
+            currentPage--;
+            fetchMods(currentPage, pageSize);
+        }
+    });
+
+    document.getElementById('next-page').addEventListener('click', function() {
+        console.log('Next page clicked');
+        if (currentPage < totalPages) {
+            currentPage++;
+            fetchMods(currentPage, pageSize);
+        }
+    });
+
+    function handlePageQueryMod(e) {
+        e.preventDefault();
+        fetchMods(currentPage, pageSize);
+    }
+    // 初始加载
+    // fetchMods(currentPage, pageSize);
+
+    function handleCreateMod(e) {
+        e.preventDefault();
+        const modId = document.getElementById('mod-id').value;
+        const modVersion = parseFloat(document.getElementById('mod-version').value);
+        const modAvailable = document.getElementById('mod-available').value === 'true';
+        const modInfo = document.getElementById('mod-info').value;
+
+        const mod = {
+            modId,
+            modVersion,
+            modAvailable,
+            modInfo
+        };
+
+        fetch('/admin/mods', {
+            method: 'POST',
+            headers: {
+                'Authorization': `${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(mod)
+        })
+            .then(response => {
+                // 获取响应头中的JWT令牌
+                let newToken = response.headers.get('Authorization');
+
+                // 如果有新的JWT令牌，存储到localStorage中
+                if (newToken) {
+                    localStorage.setItem('Authorization', newToken);
+                    token = newToken;
+                    console.log('New token received:', newToken);
+                }
+                if (!response.ok) {
+                    if (response.status === 401) {
+                        // Token is expired or invalid
+                        alert('Your session has expired. Please login again.');
+                        localStorage.removeItem('Authorization'); // Remove the token from storage
+                        window.location.href = '/index.html'; // Redirect to login page
+                    } else if (response.status === 403){
+                        alert('Forbidden: ADMIN role required.');
+                        localStorage.removeItem('Authorization'); // Remove the token from storage
+                        window.location.href = '/index.html'; // Redirect to login page
+                    } else if(response.status === 409){
+                        throw new Error(`Mod already exists: ${response.status}`);
+                    } else {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                }
+                return response.json();
+            })
+            .then((data) => {
+                if (data.code === 201){
+                    console.log('Success:', data.message)
+                    document.getElementById('create-error').textContent = '';
+                    document.getElementById('create-success').textContent = data.message;
+                } else{
+                    document.getElementById('create-success').textContent = '';
+                    document.getElementById('create-error').textContent = data.message || 'An unexpected error occurred.';
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                document.getElementById('create-success').textContent = '';
+                document.getElementById('create-error').textContent = error;
+            });
+    }
+
+    function handleDeleteMod(e) {
+        e.preventDefault();
+        const modIdToDelete = document.getElementById('mod-id-delete').value;
+
+        // 根据被点击的按钮执行不同的逻辑
+        const deleteButton = document.querySelector('.delete-button');
+        const completelyDeleteButton = document.querySelector('.completely-delete-button');
+
+        if (deleteButton === e.submitter) {
+            // 处理普通删除
+            handleNormalDelete(modIdToDelete);
+        } else if (completelyDeleteButton === e.submitter) {
+            // 处理彻底删除
+            handleCompletelyDelete(modIdToDelete);
+        }
+    }
+    function handleNormalDelete(modIdToDelete) {
+        // const modIdToDelete = document.getElementById('mod-id-delete').value;
+        fetch(`/admin/mods/${modIdToDelete}`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `${token}`
+            }
+        })
+            .then(response => {
+                // 获取响应头中的JWT令牌
+                let newToken = response.headers.get('Authorization');
+
+                // 如果有新的JWT令牌，存储到localStorage中
+                if (newToken) {
+                    localStorage.setItem('Authorization', newToken);
+                    token = newToken;
+                    console.log('New token received:', newToken);
+                }
+                if (!response.ok) {
+                    if (response.status === 401) {
+                        // Token is expired or invalid
+                        alert('Your session has expired. Please login again.');
+                        localStorage.removeItem('Authorization'); // Remove the token from storage
+                        window.location.href = '/index.html'; // Redirect to login page
+                    } else if (response.status === 403){
+                        alert('Forbidden: ADMIN role required.');
+                        localStorage.removeItem('Authorization'); // Remove the token from storage
+                        window.location.href = '/index.html'; // Redirect to login page
+                    } else if(response.status === 404){
+                        throw new Error(`Mod not found, delete failed: ${response.status}`);
+                    } else {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                }
+                return response.json();
+            })
+            .then((data) => {
+                if (data.code === 200){
+                    console.log('Success:', data.message)
+                    document.getElementById('delete-error').textContent = '';
+                    document.getElementById('delete-success').textContent = data.message;
+                } else{
+                    document.getElementById('delete-success').textContent = '';
+                    document.getElementById('delete-error').textContent = data.message || 'An unexpected error occurred.';
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                document.getElementById('delete-success').textContent = '';
+                document.getElementById('delete-error').textContent = error;
+            });
+    }
+    // 添加事件监听器来处理 "Completely Delete" 按钮的点击
+    document.querySelector('.delete-button').addEventListener('click', function() {
+        const modIdToDelete = document.getElementById('mod-id-delete').value;
+        handleNormalDelete(modIdToDelete);
+    });
+
+    function handleCompletelyDelete(modIdToDelete) {
+        fetch(`/admin/mods/deleteCompletely/${modIdToDelete}`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `${token}`
+            }
+        })
+            .then(response => {
+                // 获取响应头中的JWT令牌
+                let newToken = response.headers.get('Authorization');
+
+                // 如果有新的JWT令牌，存储到localStorage中
+                if (newToken) {
+                    localStorage.setItem('Authorization', newToken);
+                    token = newToken;
+                    console.log('New token received:', newToken);
+                }
+                if (!response.ok) {
+                    if (response.status === 401) {
+                        // Token is expired or invalid
+                        alert('Your session has expired. Please login again.');
+                        localStorage.removeItem('Authorization'); // Remove the token from storage
+                        window.location.href = '/index.html'; // Redirect to login page
+                    } else if (response.status === 403){
+                        alert('Forbidden: ADMIN role required.');
+                        localStorage.removeItem('Authorization'); // Remove the token from storage
+                        window.location.href = '/index.html'; // Redirect to login page
+                    } else if(response.status === 404){
+                        throw new Error(`Mod not found, delete failed: ${response.status}`);
+                    } else {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.code === 200){
+                    console.log('Success:', data.message);
+                    document.getElementById('delete-error').textContent = '';
+                    document.getElementById('delete-success').textContent = data.message;
+                } else {
+                    document.getElementById('delete-success').textContent = '';
+                    document.getElementById('delete-error').textContent = data.message || 'An unexpected error occurred.';
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                document.getElementById('delete-success').textContent = '';
+                document.getElementById('delete-error').textContent = error.message;
+            });
+    }
+    // 添加事件监听器来处理 "Completely Delete" 按钮的点击
+    document.querySelector('.completely-delete-button').addEventListener('click', function() {
+        const modIdToDelete = document.getElementById('mod-id-delete').value;
+        handleCompletelyDelete(modIdToDelete);
+    });
+
+    function handleUpdateMod(e) {
+        e.preventDefault()
+        const modIdToUpdate = document.getElementById('mod-id-update').value;
+        const modVersion = parseFloat(document.getElementById('mod-version-update').value);
+        const modAvailable = document.getElementById('mod-available-update').value === 'true';
+        const modInfo = document.getElementById('mod-info-update').value;
+
+        const mod = {
+            modId: modIdToUpdate,
+            modVersion,
+            modAvailable,
+            modInfo
+        };
+
+        fetch(`/admin/mods/${modIdToUpdate}`, {
+            method: 'PUT',
+            headers: {
+                'Authorization': `${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(mod)
+        })
+            .then(response => {
+                // 获取响应头中的JWT令牌
+                let newToken = response.headers.get('Authorization');
+
+                // 如果有新的JWT令牌，存储到localStorage中
+                if (newToken) {
+                    localStorage.setItem('Authorization', newToken);
+                    token = newToken;
+                    console.log('New token received:', newToken);
+                }
+                if (!response.ok) {
+                    if (response.status === 401) {
+                        // Token is expired or invalid
+                        alert('Your session has expired. Please login again.');
+                        localStorage.removeItem('Authorization'); // Remove the token from storage
+                        window.location.href = '/index.html'; // Redirect to login page
+                    } else if (response.status === 403){
+                        alert('Forbidden: ADMIN role required.');
+                        localStorage.removeItem('Authorization'); // Remove the token from storage
+                        window.location.href = '/index.html'; // Redirect to login page
+                    } else if (response.status === 404){
+                        throw new Error(`Mod not found, update failed: ${response.status}`);
+                    } else if (response.status === 400){
+                        throw new Error(`Update failed. The updated mod already exists: ${response.status}`);
+
+                    } else {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.code === 200){
+                    console.log('Success:', data.message)
+                    document.getElementById('update-error').textContent = '';
+                    document.getElementById('update-success').textContent = data.message;
+                } else{
+                    document.getElementById('update-success').textContent = '';
+                    document.getElementById('update-error').textContent = data.message || 'An unexpected error occurred.';
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                document.getElementById('update-success').textContent = '';
+                document.getElementById('update-error').textContent = error;
+            });
+    }
+
+    function handleQueryMod(e) {
+        e.preventDefault()
+        const modIdToQuery = document.getElementById('mod-id-query').value;
+        fetch(`/admin/mods/${modIdToQuery}`, {
+            method: 'GET',
+            headers: {
+                'Authorization': `${token}`
+            }
+        })
+            .then(response => {
+                // 获取响应头中的JWT令牌
+                let newToken = response.headers.get('Authorization');
+
+                // 如果有新的JWT令牌，存储到localStorage中
+                if (newToken) {
+                    localStorage.setItem('Authorization', newToken);
+                    token = newToken;
+                    console.log('New token received:', newToken);
+                }
+                if (!response.ok) {
+                    if (response.status === 401) {
+                        // Token is expired or invalid
+                        alert('Your session has expired. Please login again.');
+                        localStorage.removeItem('Authorization'); // Remove the token from storage
+                        window.location.href = '/index.html'; // Redirect to login page
+                    } else if (response.status === 403){
+                        alert('Forbidden: ADMIN role required.');
+                        localStorage.removeItem('Authorization'); // Remove the token from storage
+                        window.location.href = '/index.html'; // Redirect to login page
+                    } else if(response.status === 404){
+                        throw new Error(`Mod not found, update failed: ${response.status}`);
+                    }  else {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                }
+                return response.json();
+            })
+            .then(data => {
+                // document.getElementById('query-result').textContent = JSON.stringify(data, null, 2);
+
+                if (data.code === 200){
+                    console.log('Success:', data.message)
+                    document.getElementById('query-error').textContent = '';
+                    document.getElementById('query-success').textContent = 'modId = ' + data.data.modId
+                        + ', modVersion = ' + data.data.modVersion
+                        + ', modAvailable = ' + data.data.modAvailable
+                        + ', modInfo = ' + data.data.modInfo;
+                } else{
+                    document.getElementById('query-success').textContent = '';
+                    document.getElementById('query-error').textContent = data.message || 'An unexpected error occurred.';
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                document.getElementById('query-success').textContent = '';
+                document.getElementById('query-error').textContent = error;
+            });
+    }
+</script>
+</body>
+</html>

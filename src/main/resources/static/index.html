@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Admin Mod Management</title>
+    <style>
+        body { font-family: Arial, sans-serif; }
+        .error { color: red; }
+    </style>
+</head>
+<body>
+<h1>Mod Management</h1>
+
+<!-- 登录表单 -->
+<div id="login-form">
+    <h2>Login</h2>
+    <form id="login" onsubmit="handleLogin(event)">
+        <label for="username">Username:</label>
+        <input type="text" id="username" name="username" required>
+        <br>
+        <label for="password">Password:</label>
+        <input type="password" id="password" name="password" required>
+        <br>
+        <button type="submit">Login</button>
+    </form>
+    <p id="login-error" class="error"></p>
+</div>
+
+<script>
+    // 存储token
+    let token;
+
+    function handleLogin(e) {
+        e.preventDefault();
+        const username = document.getElementById('username').value;
+        const password = document.getElementById('password').value;
+        fetch('/login', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({username, password})
+        })
+            .then(response => response.json())
+            .then(data => {
+                if (data.code === 200) {
+                    token = data.data.token;
+                    // 将 token 存储到 localStorage
+                    localStorage.setItem('Authorization', token);
+                    // 跳转到 modManage.html
+                    window.location.href = '/modManage.html';
+                } else {
+                    document.getElementById('login-error').textContent = data.message || 'Login failed.';
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                document.getElementById('login-error').textContent = 'An error occurred during login.';
+            });
+    }
+</script>
+</body>
+</html>
